@@ -1,162 +1,185 @@
-users = {
-    1001: { accountnumber: 1001, username: "riya", password: "userone", balance: 15000, transaction: [] },
-    1002: { accountnumber: 1002, username: " Miya", password: "usertwo", balance: 10000, transaction: [] },
-    1003: { accountnumber: 1003, username: "Jiya", password: "userthree", balance: 5000, transaction: [] }
-}
+const db = require('./db')
+
 const register = (accountnumber, username, password) => {
     console.log("register called");
-    if (accountnumber in users) {
-        return {
-            status: false,
-            message: "accountnumber already exists"
-        }
+    return db.User.findOne({ accountnumber })//since this is a asynchronous action
+        .then(user => {
+            if (user) {
+                return {
+
+                    statuscode: 422,
+                    status: false,
+                    message: "User already exist please login"
+                }
+
+            }
+
+
+            else {
+                const newUser = new db.User({//creating a new entry in the database by using: new keyword
+                    accountnumber,
+                    username,
+                    password,
+                    balance:0,
+                    transaction:[]
+                })
+                newUser.save()
+                return {
+                    statuscode: 200,
+                    status: true,
+                    message: "registered successfully",
+                   
+                }
+            }
+        })
+
     }
-    else {
-        users[accountnumber] = {
-            accountnumber, username, password, balance: 0, transaction: []
-        }
-        return {
-            status: true,
-            message: "registered successfully"
-        }
-    }
-}
 
-const login = (req,accountnumber, password) => {
-    console.log("login called");
-    if (accountnumber in users) {
-        if (password == users[accountnumber]["password"]) {
-             current_user=users[accountnumber]["username"];
-         
-             req.session.current_acno=accountnumber;
-             console.log(req.session.current_acno);
-
-
-
+    const login = (req, accountnumber, password) => 
+    {
+        // console.log("login called");
+        return db.User.findOne(
+            {accountnumber,
+                password
+            })
+        .then(user=>{
+         if(user){
+             req.session.current_acno=user.accountnumber
+             req.session.username=user.username
             return {
                 statuscode: 200,
                 status: true,
-                message: "succesfully login"
+                message: "login success",
+                username:user.username,
+                currentAcc:user.accountnumber
             }
-        }
-        else {
 
+         }
+         
             return {
                 statuscode: 422,
                 status: false,
                 message: "invalid password"
             }
+        
+        })
+    }
+    
+    const deposit = (accountnumber, password, amount) => {
 
+        var amt = parseInt(amount)
+         return  db.User.findOne({accountnumber ,password})
+         .then(user=>{
+             if(!user){
+                return {
+                    statuscode: 422,
+    
+                    status: false,
+                    message: "invalid user"
+                }
+             }
+         
+         user.balance+=amt
+         user.transaction.push({
+             amount:amt,
+             type:"CREDIT"
+         })
+         user.save();
+         return {
+            statuscode: 200,
+
+            status: true,
+            message: amt + "successfully deposited and new balance is" + user.balance
         }
+    })
     }
-    else {
+    const withdraw = (req,accountnumber, password, amount) => {
 
+        var amt = parseInt(amount)
+        return db.User.findOne(
+            {
+            accountnumber,
+            password,
+           
+        })
+        
+        .then(user=>{
+            if(!user){
+                return {
+                    statuscode: 422,
+    
+                    status: false,
+                    message: "invalid user"
+                }
+             }
+           
+             if(req.session.current_acno!= accountnumber){
+                return {
+                    statuscode: 422,
+    
+                    status: false,
+                    message: "operation denied"
+                }
+            }
+             if(user.balance < amt){
+                 return{
+                    statuscode: 422,
 
-        return {
-            statuscode: 422,
-            status: false,
-            message: "invalid accountnumber"
-        }
-    }
-}
-const deposit = (req,accountnumber, password, amount) => {
-if(!req.session.current_acno){
-    return {
-        statuscode: 422,
-
-        status: false,
-        message: "please login"
-    }
-}
-    var amt = parseInt(amount)
-    if (accountnumber in users) {
-        if (password == users[accountnumber]["password"]) {
-            users[accountnumber]["balance"] += amt;
-            users[accountnumber].transaction.push({
-                amount: amt,
-                type: "CREDIT"
+                    status: false,
+                    message: "Insufficent balance"
+                 }
+             }
+             user.balance -=amt;
+             user.transaction.push({
+                amount:amt,
+                type:"DEBIT"
             })
-
+            user.save();
             return {
                 statuscode: 200,
-
-                status:true,
-                message: amt+ "successfully deposited and new balance is"+users[accountnumber]["balance"]
+    
+                status: true,
+                message: amt + "successfully withdrawed and new balance is" + user.balance
             }
-        }
-        else {
-            return {
-                statuscode: 422,
-
-                status: false,
-                message: "invalid password"
-            }
-        }
-
+        })
     }
-    else {
-        return {
-            statuscode: 422,
-
-            status: false,
-            message: "invalid user"
-        }
-
-    }
-}
-const withdraw=(accountnumber, password, amount) =>{
- 
-    var amt = parseInt(amount)
-    if (accountnumber in users) {
-      if (users[accountnumber]["balance"] > amt) {
-        if (password == users[accountnumber]["password"]) {
-          users[accountnumber]["balance"] -= amt;
-          users[accountnumber].transaction.push({
-            amount:amt,
-            type:"DEBIT"
-                    })
-                    
-          
-            
-                    return {
-                        statuscode: 200,
+       
+    const getTransaction = (accountnumber) => {
+        console.log("gettransaction called")
+        return db.User.findOne({
+            accountnumber
+        })
+        .then(user=>{
+            if(user){
+                return{
         
-                        status:true,
-                        message: amt +  "successfully debited and new balance is"+users[accountnumber]["balance"]
-                    }
-        }
-        else {
-            return {
-                statuscode: 422,
-
-                status: false,
-                message: "invalid password"
+                    statuscode: 200,
+        
+                        status: true,
+                            transaction: user.transaction
+                }
             }
-        }
+            else{
+                return{
+        
+                    statuscode: 422,
+        
+                        status: false,
+                        message:"operation denied"
+                }
+            }
+        })
+       
+    }
 
-      }
-      else {
-        return {
-            statuscode: 422,
-            status: false,
-            message: "insufficent balance"
-        }
-      }
+    module.exports =
+    {
+        register,
+        login,
+        deposit,
+        withdraw,
+        getTransaction
+
 
     }
-    else {
-        return {
-            statuscode: 422,
-            status: false,
-            message: "invalid accountnumber"
-        }
-  }
-}
-module.exports = {
-    register,
-    login,
-    deposit,
-    withdraw
-
-}
 
